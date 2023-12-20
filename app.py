@@ -16,7 +16,7 @@ def get_websites(config):
     try:
         with open(config['WEBSITES']['WEBSITES_LIST'], 'r') as f:
             sites = f.read().splitlines()
-        return sites
+        return sites, len(sites)
     except Exception as e:
         print(f"Get websites list error : {e}")
     
@@ -97,7 +97,7 @@ def send_to_zabbix(hostname, website, category, strategy, results):
 # Main
 if __name__ == "__main__":
     config = get_config('./settings.conf')
-    websites = get_websites(config)
+    websites, nbt_websites = get_websites(config)
     categories = [item.strip() for item in config['PAGESPEED']['CATEGORIES'].split(',')]
     strategies = [item.strip() for item in config['PAGESPEED']['strategies'].split(',')]
     try:
@@ -105,11 +105,13 @@ if __name__ == "__main__":
         zapi.login(config['ZABBIX']['ZABBIX_USERNAME'], config['ZABBIX']['ZABBIX_PASSWORD'])
     except Exception as e:
         print(f"Zabbix connexion error : {e}")
+    nb_websites = 0
     for website in websites:
+        nb_websites += 1
         results_list = []
-        print(f"\n{website}")
+        print(f"\n({nb_websites}/{nbt_websites}) {website}")
         for strategy in strategies:
-            print(f"- {strategy} -")
+            print(f"--- {strategy} ---")
             for category in categories:
                 results = get_websites_psi(website, category, strategy)
                 print(f"{category} : { results['score']}")
