@@ -5,33 +5,43 @@ from pyzabbix import ZabbixAPI
 from zappix.sender import Sender
 
 def get_config(conf_file):
-    config = configparser.ConfigParser()
-    config.read(conf_file)
-    return config
+    try:
+        config = configparser.ConfigParser()
+        config.read(conf_file)
+        return config
+    except Exception as e:
+        print(f"Get config error : {e}")
 
 def get_websites(config):
-    with open(config['WEBSITES']['WEBSITES_LIST'], 'r') as f:
-        sites = f.read().splitlines()
-    return sites
+    try:
+        with open(config['WEBSITES']['WEBSITES_LIST'], 'r') as f:
+            sites = f.read().splitlines()
+        return sites
+    except Exception as e:
+        print(f"Get websites list error : {e}")
+    
 
 def get_websites_psi(website, category, strategy):
-    website = f"https://{website}"
-    data = PSI(website, strategy=strategy, category=category)
-    if category == "performance":
-        results = {
-            "score": int(data["lighthouseResult"]["categories"][category]["score"] * 100),
-            "First_Contentful_Paint": data["lighthouseResult"]["audits"]["metrics"]["details"]["items"][0]["observedFirstContentfulPaint"],
-            "Total_BlockingTime": data["lighthouseResult"]["audits"]["metrics"]["details"]["items"][0]["totalBlockingTime"],
-            "Speed_Index": data["lighthouseResult"]["audits"]["metrics"]["details"]["items"][0]["speedIndex"],
-            "Largest_Contentful_Paint": data["lighthouseResult"]["audits"]["metrics"]["details"]["items"][0]["largestContentfulPaint"],
-            "Cumulative_Layout_Shift": round(data["lighthouseResult"]["audits"]["metrics"]["details"]["items"][0]["cumulativeLayoutShiftMainFrame"], 2)
-        }
-    else:
-        results = {
-            "score": int(data["lighthouseResult"]["categories"][category]["score"] * 100)
-        }
+    try:
+        website = f"https://{website}"
+        data = PSI(website, strategy=strategy, category=category)
+        if category == "performance":
+            results = {
+                "score": int(data["lighthouseResult"]["categories"][category]["score"] * 100),
+                "First_Contentful_Paint": data["lighthouseResult"]["audits"]["metrics"]["details"]["items"][0]["observedFirstContentfulPaint"],
+                "Total_BlockingTime": data["lighthouseResult"]["audits"]["metrics"]["details"]["items"][0]["totalBlockingTime"],
+                "Speed_Index": data["lighthouseResult"]["audits"]["metrics"]["details"]["items"][0]["speedIndex"],
+                "Largest_Contentful_Paint": data["lighthouseResult"]["audits"]["metrics"]["details"]["items"][0]["largestContentfulPaint"],
+                "Cumulative_Layout_Shift": round(data["lighthouseResult"]["audits"]["metrics"]["details"]["items"][0]["cumulativeLayoutShiftMainFrame"], 2)
+            }
+        else:
+            results = {
+                "score": int(data["lighthouseResult"]["categories"][category]["score"] * 100)
+            }
 
-    return results
+        return results
+    except Exception as e:
+        print(f"Get Pagespeed for {website} error : {e}")
 
 def send_to_zabbix(hostname, website, category, strategy, results):
     try:
@@ -90,10 +100,13 @@ if __name__ == "__main__":
     websites = get_websites(config)
     categories = [item.strip() for item in config['PAGESPEED']['CATEGORIES'].split(',')]
     strategies = [item.strip() for item in config['PAGESPEED']['strategies'].split(',')]
-    zapi = ZabbixAPI(f"https://{config['ZABBIX']['ZABBIX_SERVER']}/api_jsonrpc.php?")
-    zapi.login(config['ZABBIX']['ZABBIX_USERNAME'], config['ZABBIX']['ZABBIX_PASSWORD'])
-    results_list = []
+    try:
+        zapi = ZabbixAPI(f"https://{config['ZABBIX']['ZABBIX_SERVER']}/api_jsonrpc.php?")
+        zapi.login(config['ZABBIX']['ZABBIX_USERNAME'], config['ZABBIX']['ZABBIX_PASSWORD'])
+    except Exception as e:
+        print(f"Zabbix connexion error : {e}")
     for website in websites:
+        results_list = []
         print(f"\n{website}")
         for strategy in strategies:
             print(f"- {strategy} -")
@@ -101,5 +114,5 @@ if __name__ == "__main__":
                 results = get_websites_psi(website, category, strategy)
                 print(f"{category} : { results['score']}")
                 results_list.append((config['ZABBIX']['ZABBIX_HOST'], website, category, strategy, results))
-    for result in results_list:
-        send_to_zabbix(*result)
+        for result in results_list:
+            send_to_zabbix(*result)
