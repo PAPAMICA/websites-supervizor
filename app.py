@@ -3,6 +3,10 @@ import configparser
 from PythonPSI.api import PSI
 from pyzabbix import ZabbixAPI
 from zappix.sender import Sender
+import signal
+
+def handler(signum, frame):
+    raise TimeoutError()
 
 def get_config(conf_file):
     try:
@@ -21,8 +25,13 @@ def get_websites(config):
         print(f"Get websites list error : {e}")
     
 
-def get_websites_psi(website, category, strategy):
+def get_websites_psi(website, category, strategy, timeout=45):
+    def set_timeout():
+        signal.signal(signal.SIGALRM, handler)
+        signal.alarm(timeout)
+
     try:
+        set_timeout()
         website = f"https://{website}"
         data = PSI(website, strategy=strategy, category=category)
         if category == "performance":
@@ -39,9 +48,16 @@ def get_websites_psi(website, category, strategy):
                 "score": int(data["lighthouseResult"]["categories"][category]["score"] * 100)
             }
 
+        signal.alarm(0)
         return results
+
+    except TimeoutError:
+        print(f"Operation timed out for {website}")
+
     except Exception as e:
         print(f"Get Pagespeed for {website} error : {e}")
+    finally:
+        signal.alarm(0)
 
 def send_to_zabbix(hostname, website, category, strategy, results):
     try:
@@ -111,10 +127,17 @@ if __name__ == "__main__":
         results_list = []
         print(f"\n({nb_websites}/{nbt_websites}) {website}")
         for strategy in strategies:
-            print(f"--- {strategy} ---")
+            print(f"- {strategy} -")
             for category in categories:
-                results = get_websites_psi(website, category, strategy)
-                print(f"{category} : { results['score']}")
-                results_list.append((config['ZABBIX']['ZABBIX_HOST'], website, category, strategy, results))
+                results = get_websites_psi(website, category, strategy,timeout=45)
+                if results is not None:
+                    score = results.get('score', 'No score available')
+                    print(f"{category} : {score}")
+                    if 'score' in results:
+                        results_list.append((config['ZABBIX']['ZABBIX_HOST'], website, category, strategy, results))
+                    else:
+                        print(f"Data incomplete for {website}, {category}, {strategy}")
+                else:
+                    print(f"{category} : No data (timeout or error)")
         for result in results_list:
             send_to_zabbix(*result)
